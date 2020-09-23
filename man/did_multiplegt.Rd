@@ -73,18 +73,18 @@ The function returns results with the following information:
 
   did_multiplegt(wagepan, Y, G, T, D, controls)
 
-  placebo = 2
-  dynamic = 3
+  placebo = 1
+  dynamic = 1
 
   # calculate placebo and dynamic effects 
-  did_multiplegt(wagepan, Y, G, T, D, controls, placebo = placebo, dynamic = dynamic)
+  # did_multiplegt(wagepan, Y, G, T, D, controls, placebo = placebo, dynamic = dynamic)
 
   # perform bootstrap
-  did_multiplegt(wagepan, Y, G, T, D, controls, placebo = placebo, dynamic = dynamic, brep = 2)
+  # did_multiplegt(wagepan, Y, G, T, D, controls, placebo = placebo, dynamic = dynamic, brep = 2)
 
   # perform cluster bootstrap on cluster nr and save it as dataframe A
-  A <- did_multiplegt(wagepan, Y, G, T, D, controls, placebo = placebo, dynamic = dynamic,
-                      brep = 2, cluster = "nr")
+  # A <- did_multiplegt(wagepan, Y, G, T, D, controls, placebo = placebo, dynamic = dynamic,
+  #                     brep = 2, cluster = "nr")
 }
 
 \references{

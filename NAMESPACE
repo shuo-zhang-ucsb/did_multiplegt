@@ -8,5 +8,6 @@ import(stringr)
 importFrom("graphics", "axis", "lines")
 importFrom("stats", "as.formula", "cov", "lm", "predict", "residuals",
            "sd")
+importFrom("assertthat", "are_equal")
 
 export(did_multiplegt)

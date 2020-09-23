@@ -78,34 +78,35 @@ did_multiplegt_rename_var <- function(df, Y, G, T, D, controls, recat_treatment,
 did_multiplegt_transform <- function(df, controls, trends_nonparam) {
   # Group by time and group, calculate the counter
   df <- df %>%
-    group_by(G, T) %>%
+    group_by(.data$G, .data$T) %>%
     mutate(counter = n()) %>%
     summarize_all(mean)
 
   # canonicalize time to start from 0 and increase consecutively
-  tdf <- df %>% group_by(T) %>% summarize(Tgroup = group_indices()) %>% select(T, Tgroup)
-  df <- left_join(df, tdf, by="T") %>% mutate(T = Tgroup) %>% select(-Tgroup)
+  tdf <- df %>% group_by(.data$T) %>% summarize(Tgroup = group_indices()) %>% select(.data$T, .data$Tgroup)
+  df <- left_join(df, tdf, by="T") %>% mutate(T = .data$Tgroup) %>% select(-.data$Tgroup)
 
   # Mark all columns to NA if one is NA
   ignore_columns <- c("G", "T", "tag")
   if ("Vtrends" %in% colnames(df)) { ignore_columns <- c(ignore_columns, "Vtrends") }
+
   df <- df %>%
-    mutate(tag = !!rowSums(is.na(select(., -Y)))) %>%
-    mutate_at(.vars = vars(-ignore_columns), .funs = list(~ ifelse(tag, NA, .))) %>% select(-tag)
+    mutate(tag = rowSums(across(.cols = !any_of("Y"), .fns = is.na))) %>%
+    mutate_at(.vars = vars(-ignore_columns), .funs = list(~ ifelse(.data$tag, NA, .))) %>% select(-.data$tag)
 
   # canonicalize treatment to start from 0 and increase consecutively
   cat_treatment = if ("Drecat" %in% colnames(df)) { "Drecat" } else { "D" }
   var_cat_treatment = sym(cat_treatment)
-  tdf <- df %>% group_by(!!var_cat_treatment) %>% summarize(Dgroup = group_indices()) %>% select(!!var_cat_treatment, Dgroup)
+  tdf <- df %>% group_by(!!var_cat_treatment) %>% summarize(Dgroup = group_indices()) %>% select(!!var_cat_treatment, .data$Dgroup)
   df <- left_join(df, tdf, by=cat_treatment)
 
-  df <- df %>% mutate(DgroupLag = lag(Dgroup))
+  df <- df %>% mutate(DgroupLag = lag(.data$Dgroup))
 
   # calculate diff_Y, diff_D, diff_ctrl
   columns_to_diff = c("Y", "D", get_controls_rename(controls))
   ddf <- df %>%
     select_at(.vars = c("T", "G", columns_to_diff)) %>%
-    group_by(G) %>%
+    group_by(.data$G) %>%
     mutate_at(.vars = columns_to_diff, .funs = function(x) { x - lag(x) }) %>%
     rename_at(.vars = columns_to_diff, .funs = fn_diff_rename )
 
@@ -121,10 +122,10 @@ did_multiplegt_transform <- function(df, controls, trends_nonparam) {
 
   # process trends_nonparam
   if (trends_nonparam) {
-    tdf <- df %>% group_by(Vtrends, Tfactor) %>% summarize(VtrendsX = group_indices()) %>% select(Vtrends, Tfactor, VtrendsX)
+    tdf <- df %>% group_by(.data$Vtrends, .data$Tfactor) %>% summarize(VtrendsX = group_indices()) %>% select(.data$Vtrends, .data$Tfactor, .data$VtrendsX)
     tdf$VtrendsX <- factor(tdf$VtrendsX)
 
-    df <- left_join(df, tdf, by=c("Vtrends", "Tfactor")) %>% mutate(Vtrends = VtrendsX) %>% select(-VtrendsX)
+    df <- left_join(df, tdf, by=c("Vtrends", "Tfactor")) %>% mutate(Vtrends = .data$VtrendsX) %>% select(-.data$VtrendsX)
   }
 
   df
@@ -137,7 +138,7 @@ placebo_transform_level <- function(df, counter_placebo, controls) {
 
   lag_names = c("diff_D", "diff_Y", nm_diff_controls)
   df_l <- df %>%
-    group_by(G) %>%
+    group_by(.data$G) %>%
     select_at(.vars = vars(c("T", "G", lag_names))) %>%
     mutate_at(.vars = vars(lag_names), .funs = function(x) { lag(x, counter_placebo) }) %>%
     rename_at(.vars = vars(lag_names), .funs = fn_lag_rename_i)
@@ -155,7 +156,7 @@ dynamic_transform_level <- function(df, counter_dynamic, controls) {
   lead_names = c("diff_D", nm_diff_i_Y, nm_diff_i_controls)
 
   df_l <- df %>%
-    group_by(G) %>%
+    group_by(.data$G) %>%
     select_at(.vars = vars(c("T", "G", "Y", "diff_D", nm_ctrls))) %>%
     mutate_at(.vars = vars(c("Y", nm_ctrls)), .funs = function(x) { x - lag(x, counter_dynamic+1) }) %>%
     rename_at(.vars = vars(c("Y", nm_ctrls)), .funs = function(x) { fn_diff_i_rename(x, counter_dynamic) }) %>%
@@ -196,7 +197,7 @@ did_multiplegt_preprocess <- function(df, Y, G, T, D, controls,
 
 placebo_update_cond <- function(df, counter_placebo, controls, threshold_stable_treatment) {
   var_lag_diff_D = sym(fn_lag_rename("diff_D", counter_placebo))
-  df %>% mutate(placebo_cond = ifelse(!is.na(!!var_lag_diff_D) & abs(!!var_lag_diff_D) <= threshold_stable_treatment, placebo_cond, FALSE))
+  df %>% mutate(placebo_cond = ifelse(!is.na(!!var_lag_diff_D) & abs(!!var_lag_diff_D) <= threshold_stable_treatment, .data$placebo_cond, FALSE))
 }
 
 prepare_placebo_once <- function(df, counter_placebo, controls, threshold_stable_treatment) {
@@ -210,18 +211,18 @@ prepare_placebo_once <- function(df, counter_placebo, controls, threshold_stable
   }))
 
   df <- df %>%
-    group_by(G) %>%
+    group_by(.data$G) %>%
     filter(n() > counter_placebo) %>%
     select_at(.vars = vars(-c("diff_Y", nm_diff_controls, nm_lag_diff_D))) %>%
-    rename_at(.vars = vars(c(nm_lag_diff_Y, nm_lag_diff_controls)), .funs = funs(str_remove(., prefix))) %>%
-    filter(placebo_cond == TRUE)
+    rename_at(.vars = vars(c(nm_lag_diff_Y, nm_lag_diff_controls)), .funs = list(~ str_remove(., prefix))) %>%
+    filter(.data$placebo_cond == TRUE)
 
   df
 }
 
 dynamic_update_cond <- function(df, counter_dynamic, controls, threshold_stable_treatment) {
   var_lead_diff_D = sym(fn_lead_rename("diff_D", counter_dynamic))
-  df %>% mutate(dynamic_cond = ifelse(!is.na(!!var_lead_diff_D) & abs(!!var_lead_diff_D) <= threshold_stable_treatment, dynamic_cond, FALSE))
+  df %>% mutate(dynamic_cond = ifelse(!is.na(!!var_lead_diff_D) & abs(!!var_lead_diff_D) <= threshold_stable_treatment, .data$dynamic_cond, FALSE))
 }
 
 prepare_dynamic_once <- function(df, counter_dynamic, controls, threshold_stable_treatment) {
@@ -242,23 +243,23 @@ prepare_dynamic_once <- function(df, counter_dynamic, controls, threshold_stable
   prefix = paste("F", toString(counter_dynamic), "_", "diff", toString(counter_dynamic), "_", sep="")
 
   df <- df %>%
-    group_by(G) %>%
+    group_by(.data$G) %>%
     filter(n() > counter_dynamic) %>%
     select_at(.vars = vars(-c("diff_Y", nm_diff_controls))) %>%
-    rename_at(.vars = vars(c(nm_lead_diff_i_Y, nm_lead_diff_i_controls)), .funs = funs(str_replace(., prefix, "diff_"))) %>%
-    filter(dynamic_cond == TRUE)
+    rename_at(.vars = vars(c(nm_lead_diff_i_Y, nm_lead_diff_i_controls)), .funs = list(~ str_replace(., prefix, "diff_"))) %>%
+    filter(.data$dynamic_cond == TRUE)
 
   df
 }
 
 residuals_control_once <- function(df, d, threshold_stable_treatment, diff_ctrl_names, trends_nonparam, trends_lin) {
-  df_d <- df %>% filter( DgroupLag == d )
-  df_stable <- df_d %>% filter( abs(diff_D) <= threshold_stable_treatment ) %>% filter(!is.na(diff_Y))
+  df_d <- df %>% filter( .data$DgroupLag == d )
+  df_stable <- df_d %>% filter( abs(.data$diff_D) <= threshold_stable_treatment ) %>% filter(!is.na(.data$diff_Y))
   n_stable <- nrow(df_stable)
   do_count_tfactor <- length(unique(df_stable$Tfactor)) > 1
 
   if (n_stable <= length(diff_ctrl_names)) {
-    return(df_d %>% mutate(residuals = diff_Y)  %>% select(T, G, residuals))
+    return(df_d %>% mutate(residuals = .data$diff_Y)  %>% select(.data$T, .data$G, .data$residuals))
   }
 
   df_trends <- NULL
@@ -280,9 +281,9 @@ residuals_control_once <- function(df, d, threshold_stable_treatment, diff_ctrl_
     }
 
     df_stable.lm <- feols(as.formula(formula), data = df_stable, weights = ~ counter)
-    df_trends <- df_d %>% filter(Vtrends %in% levels(df_stable$Vtrends))
+    df_trends <- df_d %>% filter(.data$Vtrends %in% levels(df_stable$Vtrends))
     df_trends$pred_trends <- predict(df_stable.lm, df_trends)
-    df_trends <- df_trends %>% select(T, G, pred_trends)
+    df_trends <- df_trends %>% select(.data$T, .data$G, .data$pred_trends)
   }
 
   # normal controls
@@ -290,28 +291,29 @@ residuals_control_once <- function(df, d, threshold_stable_treatment, diff_ctrl_
   if (do_count_tfactor) formula = paste(formula, " + Tfactor")
   formula = paste("diff_Y ~ ", formula, sep = "")
 
+  counter = df_stable$counter
   df_stable.lm <- lm(formula, data = df_stable, weights = counter)
 
   df_controls <-  if (do_count_tfactor) {
-    df_d %>% filter(Tfactor %in% df_stable.lm$xlevels[["Tfactor"]])
+    df_d %>% filter(.data$Tfactor %in% df_stable.lm$xlevels[["Tfactor"]])
   } else { df_d }
   df_controls$pred_controls = predict(df_stable.lm, df_controls, allow.new.levels=TRUE)
-  df_controls <- df_controls %>% select(T, G, pred_controls)
+  df_controls <- df_controls %>% select(.data$T, .data$G, .data$pred_controls)
 
   if (is.null(df_trends)) {
     df_d %>%
       left_join(df_controls, by=c("T", "G")) %>%
-      mutate(residuals = case_when(!is.na(pred_controls) ~ diff_Y - pred_controls,
-                                   TRUE ~ diff_Y)) %>%
-      select(T, G, residuals)
+      mutate(residuals = case_when(!is.na(.data$pred_controls) ~ .data$diff_Y - .data$pred_controls,
+                                   TRUE ~ .data$diff_Y)) %>%
+      select(.data$T, .data$G, .data$residuals)
   } else {
     df_d %>%
       left_join(df_trends, by=c("T", "G")) %>%
       left_join(df_controls, by=c("T", "G")) %>%
-      mutate(residuals = case_when(!is.na(pred_trends) ~ diff_Y - pred_trends,
-                              !is.na(pred_controls) ~ diff_Y - pred_controls,
-                              TRUE ~ diff_Y)) %>%
-      select(T, G, residuals)
+      mutate(residuals = case_when(!is.na(.data$pred_trends) ~ .data$diff_Y - .data$pred_trends,
+                              !is.na(.data$pred_controls) ~ .data$diff_Y - .data$pred_controls,
+                              TRUE ~ .data$diff_Y)) %>%
+      select(.data$T, .data$G, .data$residuals)
   }
 }
 
@@ -331,7 +333,7 @@ residuals_control <- function(df, controls, threshold_stable_treatment, trends_n
       df, d, threshold_stable_treatment, diff_ctrl_names, trends_nonparam, trends_lin)
     df <- df %>%
       left_join(tmp_ret, by = c("T", "G")) %>%
-      mutate(diff_Y = ifelse(DgroupLag == d, residuals, diff_Y)) %>%
+      mutate(diff_Y = ifelse(.data$DgroupLag == d, residuals, .data$diff_Y)) %>%
       select(-residuals)
   }
 
@@ -340,17 +342,17 @@ residuals_control <- function(df, controls, threshold_stable_treatment, trends_n
 
 did_multiplegt_once <- function(df, d, threshold_stable_treatment) {
   ret = list(effect = 0, denom = 0, total = 0, switchers = 0)
-  tmp_cnt_df <- df %>% filter(DgroupLag == d)
+  tmp_cnt_df <- df %>% filter(.data$DgroupLag == d)
 
-  df_increase <- tmp_cnt_df %>% filter(diff_D > threshold_stable_treatment)
+  df_increase <- tmp_cnt_df %>% filter(.data$diff_D > threshold_stable_treatment)
   n_increase <- as.numeric(nrow(df_increase))
   cnt_increase <- as.numeric(sum(df_increase$counter, na.rm = TRUE))
 
-  df_stable <- tmp_cnt_df %>% filter( abs(diff_D) <= threshold_stable_treatment )
+  df_stable <- tmp_cnt_df %>% filter( abs(.data$diff_D) <= threshold_stable_treatment )
   n_stable <- as.numeric(nrow(df_stable))
   cnt_stable <- as.numeric(sum(df_stable$counter, na.rm = TRUE))
 
-  df_decrease <- tmp_cnt_df %>% filter(diff_D < -threshold_stable_treatment)
+  df_decrease <- tmp_cnt_df %>% filter(.data$diff_D < -threshold_stable_treatment)
   n_decrease <- as.numeric(nrow(df_decrease))
   cnt_decrease <- as.numeric(sum(df_decrease$counter, na.rm = TRUE))
 
@@ -361,6 +363,8 @@ did_multiplegt_once <- function(df, d, threshold_stable_treatment) {
     df_plus <- rbind(df_increase, df_stable)
     df_plus$treatment <- case_when(df_plus$diff_D > threshold_stable_treatment ~ 1, TRUE ~ 0)
 
+    counter = df_plus$counter
+    
     df_plus.lm <- lm(diff_Y ~ treatment, data = df_plus, weights = counter)
     ret$effect = ret$effect + df_plus.lm$coefficients["treatment"] * cnt_increase
 
@@ -375,6 +379,8 @@ did_multiplegt_once <- function(df, d, threshold_stable_treatment) {
     df_minus <- rbind(df_decrease, df_stable)
     df_minus$treatment <- case_when(df_minus$diff_D < -threshold_stable_treatment ~ 1, TRUE ~ 0)
 
+    counter = df_minus$counter
+    
     df_minus.lm <- lm(diff_Y ~ treatment, data = df_minus, weights = counter)
     ret$effect = ret$effect - df_minus.lm$coefficients["treatment"] * cnt_decrease
 
@@ -400,7 +406,7 @@ did_multiplegt_core <- function(df, controls, threshold_stable_treatment, trends
   df <- residuals_control(df, controls, threshold_stable_treatment, trends_nonparam, trends_lin)
 
   for (t in (counter_placebo+2):(t_max - counter_dynamic)) {
-    df_d <- df %>% filter(T == t) %>% filter(!is.na(diff_D) & !is.na(diff_Y))
+    df_d <- df %>% filter(.data$T == t) %>% filter(!is.na(.data$diff_D) & !is.na(.data$diff_Y))
     if (nrow(df_d) > 0) {
       d_min = min(df_d$DgroupLag, na.rm = TRUE)
       d_max = max(df_d$DgroupLag, na.rm = TRUE)
